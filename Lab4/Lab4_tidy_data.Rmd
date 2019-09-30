@@ -105,8 +105,9 @@ scfa_data %>%
 Apply the group and summarise functions to determine the mean concentration of all three SCFAs for each participant, during each week of the study. Can you do this without creating any intermediate data frames? 
 
 ```{r}
-# write code here
-
+scfa_indv_qc %>%
+  group_by(participant_id) %>%
+  summarize(mean_butyrate = mean(butyrate_mmol_kg), mean_propionate = mean(propionate_mmol_kg), mean_acetate = mean(acetate_mmol_kg))
 ```
 
 

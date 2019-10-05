@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "~/Documents/UMich_Bio201_F19/")
+knitr::opts_knit$set(root.dir = "~/Desktop/UMich_Bio201_F19/")
 ```
 
 # Load packages
@@ -21,7 +21,7 @@ set.seed(7)
 # Import data
 Import the curated dataset we generated last week, verify that all column names are in snake case, and any measurements include units. 
 ```{r}
-scfa_data <- read_delim(file = "Lab3/curated_data/scfa_indv_qc.txt",
+scfa_data <- read_delim(file = "Curated Data/scfa_indv_qc.txt",
                         delim = "\t", col_names = TRUE, trim_ws = TRUE, 
                         na = c("", "NA")) 
 summary(scfa_data)
@@ -153,7 +153,7 @@ Notice there are some columns containing NAs, we cannot calculate a difference i
 This yields a data frame where the observations for each week are spread across multiple columns. Now use mutate to calculate the difference between weeks, and save as a new data frame.
 
 ```{r}
-butyrate_wide <- scfa_wkly %>%
+butyrate_wide <- scfa_data %>%
   select(participant_id, semester, supplement_consumed, study_week, mean_butyrate) %>% #drop extra columns
   filter(study_week == "week1" | study_week == "week3") %>% #drop extra weeks
   spread(study_week, mean_butyrate) %>% #convert to wide format
@@ -165,7 +165,6 @@ head(butyrate_wide)
 
 Create a wide data frame for the other SCFAs.
 ```{r}
-# copy+paste and edit code chunk for acetate
 
 ```
 
@@ -177,20 +176,46 @@ Create a wide data frame for the other SCFAs.
 ### Challenge 4.2
 We are interested in the average difference of fecal butyrate by supplement type, how would you do this? 
 ```{r}
-# write code here
+butyrate_diff <- scfa_data %>%
+  filter(study_week = "week1" | "week3") %>%
+  spread(supplement_consumed, but_mean) %>%
+  filter(supplement_consumed = "BRMPS") %>%
+  mutate(but_diff = "week3" - "week1")
 ```
 
 Repeat this process for each SCFA. How would you plot your results? 
 ```{r}
-# copy+paste and edit code chunk for acetate
+acetate_diff <- scfa_data %>%
+  filter(study_week = "week1" | "week3") %>%
+  spread(supplement_consumed, ace_mean) %>%
+  filter(supplement_consumed = "acetate") %>%
+  mutate(ace_diff = "week3" - "week1")
 ```
 
 ```{r}
-# copy+paste and edit code chunk for propionate
+propionate_diff <- scfa_data %>%
+  filter(study_week = "week1" | "week3") %>%
+  spread(supplement_consumed, pro_mean) %>%
+  filter(supplement_consumed = "propionate") %>%
+  mutate(ace_diff = "week3" - "week1")
 ```
 
 ```{r}
-# copy+paste and edit code chunks for plots
+butyrate_diff <- scfa_data %>%
+  filter(study_week == "week1" | study_week == "week3") %>%
+  ggplot(aes(x = participant_id, 
+             y = butyrate_diff, 
+             study_week, supplement_consumed, semester)) +
+  geom_point(aes(color = study_week)) +
+  facet_grid(~study_week) + 
+  labs(x = "Individuals",
+       y = "Difference in Butyrate (mmol/kg)") +
+  theme(axis.text.x = element_blank(),
+        legend.position = "none")
+
+butyrate_diff + geom_blank() 
+
+[Repeat for propionate and acetate]
 ```
 
 These plots are fine, however they could be graphed more efficiently with facets. This introduces a new problem: combining data frames.

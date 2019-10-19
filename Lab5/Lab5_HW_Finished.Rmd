@@ -1,0 +1,849 @@
+---
+title: "Lab 5 new"
+author: "Kristi Gdanetz MacCready"
+date: "10/07/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "~/Documents/UMich_Bio201_F19/Lab5")
+```
+
+# Load packages
+
+```{r Load packages, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+library(tidyverse)
+library(readxl)
+library(broom)
+library(cowplot)
+set.seed(7)
+```
+
+# Relationship between data structure and results
+There are several factors of data sets which influence the results of statistical tests: 
+
+* Values: numeric values of each data point
+* Sample size (n): number of data points in each group being compared 
+* Variance: spread of the data within each group
+* Effect size: size of the difference in mean, strength of the correlation, etc. 
+
+Before getting into the details of use and interpretation of formal statistical tests, we are going to do an exercise with random number vectors to illustrate how each of these factors effects your intuitive interpretation of the results. 
+
+Run the code blocks below to create two vectors with the listed means, sample size, variation (via SD). Combine these vectors into a data frame and plot. Discuss with your neighbor, then under each plot write if you would determine these two samples to be equal, and which factors influenced your decision. 
+
+### Example 1
+```{r}
+sample1 <- rnorm(6, mean=12, sd = 1) #vector1 
+
+sample2 <- rnorm(6, mean=15, sd = 1) #vector2 
+
+df1 <- cbind(sample1, sample2) %>% #combine vectors into dataframe
+  as.data.frame() %>% 
+  gather(key = "samples", value = "numbers") %>% #make long format
+  mutate(samples = as.factor(samples)) #convert to factor for plot
+
+ggplot(data = df1, aes(x = samples, #plot data frame 
+                     y = numbers)) + 
+  geom_boxplot(aes(color = samples)) + #shows median & quartiles 
+  geom_jitter(aes(color = samples)) + #jitter = individual points per category 
+  theme(legend.position = "none")
+```
+The samples are not equal. The means are a distance from one another and the samples are clustered around different values. The variance is such that the two samples do not overlap at all. 
+
+### Example 2
+```{r}
+sample3 <- rnorm(6, mean=12, sd = 3) 
+sample4 <- rnorm(6, mean=15, sd = 4) 
+
+df2 <- cbind(sample3, sample4) %>% #combine vectors into dataframe
+  as.data.frame() %>% 
+  gather(key = "samples", value = "numbers") %>% #make long format
+  mutate(samples = as.factor(samples)) #convert to factor for plot
+
+ggplot(data = df2, aes(x = samples, #plot data frame 
+                     y = numbers)) + 
+  geom_boxplot(aes(color = samples)) + 
+  geom_jitter(aes(color = samples)) + 
+  theme(legend.position = "none")
+```
+The samples are not equal as the sample4 plot clearly has a much wider range than the sample3 plot. There is also much more variance and a different mean with the sample4 plot. Therefore, it would not be reasonable to say that the two sample are equal. 
+
+### Example 3
+```{r}
+sample5 <- rnorm(20, mean=12, sd = 1) 
+sample6 <- rnorm(20, mean=15, sd = 1) 
+
+df3 <- cbind(sample5, sample6) %>% #combine vectors into dataframe
+  as.data.frame() %>% 
+  gather(key = "samples", value = "numbers") %>% #make long format
+  mutate(samples = as.factor(samples)) #convert to factor for plot
+
+ggplot(data = df3, aes(x = samples, #plot data frame 
+                     y = numbers)) + 
+  geom_boxplot(aes(color = samples)) + 
+  geom_jitter(aes(color = samples)) + 
+  theme(legend.position = "none")
+```
+The samples are not equal in the sense that both means are rather far in value from each other. One is 12.2 or so, and the other one is around 14.6 or so. The clustering is different as well in that the blue plot has more outliers at higher numbers. 
+
+### Example 4
+```{r}
+sample7 <- rnorm(20, mean=12, sd = 3) 
+sample8 <- rnorm(20, mean=15, sd = 4) 
+
+df4 <- cbind(sample7, sample8) %>% #combine vectors into dataframe
+  as.data.frame() %>% 
+  gather(key = "samples", value = "numbers") %>% #make long format
+  mutate(samples = as.factor(samples)) #convert to factor for plot
+
+ggplot(data = df4, aes(x = samples, #plot data frame 
+                     y = numbers)) + 
+  geom_boxplot(aes(color = samples)) + 
+  geom_jitter(aes(color = samples)) + 
+  theme(legend.position = "none")
+```
+The samples are not equal in that the means are rather off from each other. Furthermore, the clustering is differen between both plots. While they do overlap a bit, it is only the lower quartile of the second graph that overlaps with the red plot. 
+
+# Import data 
+
+Import the data frame you generated last week that has the mean weekly SCFAs. Import both long and wide formats of these data. During import convert column names to snake case.  
+```{r include=FALSE}
+scfa_long <- read_delim("Lab5/curated_data/SCFA_wkly_long.txt", 
+                        delim = "\t", col_names = TRUE, trim_ws = TRUE, na = c("NA")) %>%
+  rename_all(tolower) %>%
+  mutate(semester = factor(semester,
+                           levels=c("Winter2015", "Fall2015", 
+                                    "Winter2016", "Fall2016", 
+                                    "Winter2017", "Fall2017", 
+                                    "Winter2018", "Fall2018", 
+                                    "Winter2019"), ordered = TRUE))
+  
+
+scfa_wide <- read_delim("Lab5/curated_data/SCFA_wkly_wide.txt", 
+                        delim = "\t", col_names = TRUE, trim_ws = TRUE, na = c("NA")) %>%
+  rename_all(tolower) %>%
+  mutate(semester = factor(semester,
+                           levels=c("Winter2015", "Fall2015", 
+                                    "Winter2016", "Fall2016", 
+                                    "Winter2017", "Fall2017", 
+                                    "Winter2018", "Fall2018", 
+                                    "Winter2019"), ordered = TRUE))
+```
+
+
+# Introduction
+
+As mentioned earlier this semester, one of the over arching questions for this course is: "Does the consumption of a prebiotic (fiber supplement) effect the gut microbiome?" As you have been learning there are many elements to this; fermentation products, community composition, pH, and host lifestyle. In most of the lab exercise today we will attempt to answer part of this question using the change in fermentation products (specifically butyrate) in individuals who consumed potato starch. Today we will introduce several types of plots, and discuss when they are appropriate for certain families of data, and we will conduct some basic statistical tests for these plots. 
+
+```{r}
+# use select + starts_with or ends_with to retain/drop multiple columns with similar names
+butyrate_wide <- scfa_wide %>%
+  select(-starts_with("ace"),-ends_with("ace") 
+         -starts_with("pro"), -ends_with("pro"),
+         -starts_with("total"), -ends_with("total"),
+         -starts_with("delta")) %>%
+  filter(semester != "Winter2015",
+         supplement_consumed == "BRMPS" | supplement_consumed == "LOODAT") %>%
+  na.omit(but_wk1, but_wk3)
+```
+
+# 1 continuous and 1 categorical (discrete) variable 
+
+In this lesson we are going to use the term categorical, however these are called discrete on the ggplot cheatsheet. 
+
+### Violin plots
+In the section above we subset by fiber supplement and fermentation product. One of the variations of fiber supplement we tested was frequency (once or twice daily). In the code below we are going to generate a plot that illustrates the butyrate concentration when individuals are consuming fiber supplements at different frequencies. 
+
+Violin plots (or geom_boxplot + geom_jitter) are the recommended way to represent these families of data, they show the variation and the range, are easy to annotate with a mean (geom_errobar), you can easily add individual data points (geom_violin + geom_jitter), and do not obfuscate data in the manner of a bar plot. We will not use bar plots in this course. 
+
+Subset the long data frame imported above for butyrate measurements only, supplement type is potato starch (BRMPS or LOODAT), drop any samples from Winter 2015, filter for individuals who were quantity compliant, make sure to keep the frequency and semester columns. 
+```{r}
+butyrate_long <- scfa_long %>%
+  select(-starts_with("ace"), -starts_with("pro"), -ends_with("median")) %>%
+  filter(semester != "Winter2015",
+         supplement_consumed == "BRMPS" | supplement_consumed == "LOODAT",
+         quantity_compliant == "yes") %>%
+  na.omit(butyrate_mean) #drop any samples with NA in named columns
+
+# Generate a plot of the [butyrate] of each supplement type, week 3 only  
+butyrate_long %>%
+  filter(study_week == "week3") %>%
+  ggplot(aes(x = frequency, 
+             y = butyrate_mean)) + 
+  geom_violin() # + geom_jitter()
+```
+
+In the plots created above, notice the widest part of the twice daily category appears slightly higher than once daily. This means most of the data points in the 2x group are of a higher concentration that those in the 1x group. However the top of the violin in the 1x group is higher than the 2x, indicating the 1x group's maximum value is greater. Discuss with your neighbor, do you think the butyrate concentrations of these two groups (1x vs. 2x) are different? |||The butyrate concentrations between the two cocnentrations are likely different, but not dramatically. If comparing the 2xdaily group to the 1x daily group, it can be said that the 2xdaily group is more bimodal and that it has a lower range, but the 2xdaily values overlap with the 1xdaily values at large. 
+
+### Checking assumptions
+In the sections above we observed trends in the data, but this is not sufficient for research purposes. Scientists use statistics to determine the probability that these trends are real. Before we can dive into using a statistical test, we have to determine if our data are appropriate for the test of interest, otherwise we might have more confidence in the results than we should. We do this by checking the assumptions of the tests. 
+
+In the violin plot above, we want to determine if the butyrate concentrations in 1xdaily potato starch consumers is different from that of the 2xdaily potato starch consumers. The plot indicates this might be the case. To answer this question we are comparing two means, to do this we use the student's t-test. A t-test requires the following assumptions to be met: 
+
+* Relatively large sample size (usually > 30)
+* The samples have to come from a normal distribution
+* We are also going to check if the variances of the groups are equal, because this will determine some of the t.test() arguments
+
+##### Sample size
+```{r}
+# check sample size
+butyrate_long %>%
+  filter(study_week == "week3") %>% #subset long data frame in same manner as for plot
+  group_by(frequency) %>% #set groups to what we are comparing
+  summarise(sample_size = n()) #use summarise() and n() to get counts of ppl in each group
+```
+
+##### Normality 
+```{r}
+# normal distribution 
+but_df <- butyrate_long %>%
+  filter(study_week == "week3") #subset long data frame in same manner as for plot
+
+shapiro.test(but_df$butyrate_mean) #call column of df with values = vector 
+
+```
+Here a small p-value indicates these samples differ from a normal distribution. When I have a result with a samll p-value I always check how much the distrubtion deviates from normal with a histogram:
+
+```{r}
+ggplot(but_df, aes(x=butyrate_mean)) +
+  geom_histogram() #histograms show the number of data points (count) at each value
+
+qqnorm(but_df$butyrate_mean); qqline(but_df$butyrate_mean)
+```
+This histogram shows a rough bell curve, in combination with our large sample size we are okay with proceeding with a t-test. 
+
+#### Equal variances 
+Finally we are going to determine if the groups we would like to compare (1xdaily and 2xdaily) have equal variances (homogeneity). 
+```{r}
+# code to extract first group (1xdaily)
+once_grp <- butyrate_long %>%
+  filter(study_week == "week3",
+         frequency == "1xdaily") 
+
+# code to extract second group (2xdaily)
+twice_grp <- butyrate_long %>%
+  filter(study_week == "week3",
+         frequency == "2xdaily") 
+```
+
+```{r}
+var.test(x = once_grp$butyrate_mean, 
+         y = twice_grp$butyrate_mean, 
+         alternative = "two.sided")
+```
+A low p-value indicates the variances are not equal, we will account for this in our test in the next section. 
+
+### T-test between categorical variables
+The test you will probably use most frequently is the t-test; and this test determines if the means of two groups are equal. First we need to extract the data we will use for the test: 
+
+```{r}
+# use groups extracted above for the test 
+t.test(x = once_grp$butyrate_mean, 
+       y = twice_grp$butyrate_mean,
+       alternative = "less", paired = FALSE, var.equal = FALSE)
+```
+A large p-value indicates the means of the two groups are not different. 
+
+### Paired t-test
+As we've discussed in Friday lectures, everyone has a unique microbiome. We should compare week 1 and week 3 concentrations of all individuals who consumed BRMPS, and determine if the addition of the supplement results in generally higher fecal butyrate concentrations for most individuals. This is accomplished with a special flavor of t-test called a paired t-test. Paired t-tests are used whenever the samples are not independent, such as when the samples are from the same individual over time. 
+
+```{r}
+# Same plot as above but use facets to plot both weeks 
+butyrate_long %>%
+  filter(study_week == "week1" | study_week == "week3", 
+         supplement_consumed == "BRMPS") %>% 
+  ggplot(aes(x = study_week, 
+             y = butyrate_mean, 
+             color = study_week), 
+         frequency) + 
+  geom_violin() + # geom_jitter() + 
+  facet_grid(~frequency) + 
+  xlab(NULL) + 
+  ylab("Butyrate (mmol/kg)") + 
+  theme(legend.position = "none")
+```
+In the figure above it appears there is no difference in weeks for the 1xdaily group, but there may be an increase in the 2xdaily group. 
+
+Before we conduct the statistical test to determine if the observed trends are likely true, we must check our assumptions.
+```{r}
+# sample size
+butyrate_long %>%
+  filter(study_week == "week1" | study_week == "week3", 
+         supplement_consumed == "BRMPS") %>%  #subset long data frame in same manner as plot
+  group_by(frequency, study_week) %>% #set groups to what we are comparing
+  summarise(sample_size = n()) #use summarise() and n() to get counts of ppl in each group
+```
+
+```{r}
+# Check assumptions for each week of the 2xdaily groups 
+wk1_2x <- butyrate_long %>%
+  filter(study_week == "week1", 
+         supplement_consumed == "BRMPS", 
+         frequency == "2xdaily") 
+shapiro.test(wk1_2x$butyrate_mean) 
+ggplot(wk1_2x, aes(x = butyrate_mean)) + geom_histogram()
+
+wk3_2x <- butyrate_long %>%
+  filter(study_week == "week3", 
+         supplement_consumed == "BRMPS", 
+         frequency == "2xdaily") 
+shapiro.test(wk3_2x$butyrate_mean) 
+ggplot(wk3_2x, aes(x = butyrate_mean)) + geom_histogram()
+
+# join these data frames back together
+x2_df <- inner_join(x = wk1_2x, y = wk3_2x,
+                    by = c("participant_id", "frequency", 
+                           "semester", "supplement_consumed", "quantity_compliant")) %>%
+  rename(butyrate_mean_wk1 = butyrate_mean.x,
+         butyrate_mean_wk3 = butyrate_mean.y) %>%
+  select(-starts_with("study_week"))
+
+# code to run paired t-test 
+t.test(x = x2_df$butyrate_mean_wk1, y = x2_df$butyrate_mean_wk3, 
+       alternative = "less", paired = TRUE) 
+```
+For this paired t-test we specified alternative = less because we expect the butyrate concentrations to be higher during week 3. Read the details of the t.test() help page for options for the alternative argument.
+
+The p-value is 0.07 which for a complex biological system (like the gut microbiome) is low! The pattern we observed in the figure is likely a real trend. We can say with confidence that the butyrate concentrations between weeks 1 and 3 are not equal for individuals who consumed BRMPS twice daily. 
+
+### Non-parametric test
+What if our data set does not meet any of the assumptions for the test? We just use another test. A t-test is a parametric test, and the non-parametric counterpart is the Mann-Whitney-U test (also called a two-sample Wilcoxon test).
+```{r}
+# same arguments, just a different function call. 
+wilcox.test(x = x2_df$butyrate_mean_wk1, 
+            y = x2_df$butyrate_mean_wk3, 
+            alternative = "less", paired = TRUE)
+```
+
+# Homework 5.1
+Repeat the process to conduct the paired t-test for the 1xdaily group. Remember to check the assumptions. Write your conclusions regarding the test as a comment at the end of the code block. 
+```{r}
+#Check Sample Size
+week1 <- butyrate_long %>%
+  filter(study_week == "week1") %>%
+  filter(frequency == "1xdaily") %>%
+  group_by(frequency) %>%
+  summarise(sample_size = n())
+week1
+
+week3 <- butyrate_long %>%
+  filter(study_week == "week3") %>%
+  filter(frequency == "1xdaily") %>%
+  group_by(frequency) %>%
+  summarise(sample_size = n())
+week3
+
+#Check Normality
+but_week1 <- butyrate_long %>%
+  filter(frequency == "1xdaily") %>%
+  filter(study_week == "week1")
+shapiro.test(but_week1$butyrate_mean)
+ggplot(but_week1, aes(x = butyrate_mean)) + geom_histogram()
+
+but_week3 <- butyrate_long %>%
+  filter(frequency == "1xdaily") %>%
+  filter(study_week == "week3") 
+shapiro.test(but_week3$butyrate_mean) 
+ggplot(but_week3, aes(x = butyrate_mean)) + geom_histogram()
+
+but_join <- inner_join(x = but_week1, y = but_week3,
+                    by = c("participant_id", "frequency", 
+                           "semester", "supplement_consumed", "quantity_compliant")) %>%
+  rename(butyrate_mean_wk1 = butyrate_mean.x,
+         butyrate_mean_wk3 = butyrate_mean.y) %>%
+  select(-starts_with("study_week"))
+
+#Check Equal Variances
+# code to extract first group (1xdaily)
+week1 <- butyrate_long %>%
+  filter(study_week == "week1",
+         frequency == "1xdaily") 
+
+week3 <- butyrate_long %>%
+  filter(study_week == "week3",
+        frequency == "1xdaily") 
+
+var.test(x = week1$butyrate_mean, 
+         y = week3$butyrate_mean, 
+         alternative = "two.sided")
+
+#Paired T-test
+t.test(x = but_join$butyrate_mean_wk1, y = but_join$butyrate_mean_wk3, 
+       alternative = "less", paired = TRUE)
+
+#Analysis: Based upon these assumptions, the investigated sample passes the check: The distribution is rather normal, The sample size is adequate, and the variances are similar. The paired T-test shows a p-value of 0.1276, which is small enough for this large of an "n" such that any differences between the paired group is likely not due to random chance. 
+
+```
+
+# Homework 5.2
+Generate plots to determine if methane, acetate, propionate increased during week 3 of the study. Generate plot to determine if pH decreased during week 3 of the study. Save plots to folder called `figures`. 
+```{r}
+breath_wkly <- read_delim("curated_data/breath_wkly.txt", 
+    "\t", escape_double = FALSE, trim_ws = TRUE)
+
+# methane
+meth_df <- breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  select(-starts_with("H2"), -starts_with("CO2"), -ends_with("median"), -starts_with("N"), -starts_with("Comments"))
+meth_df
+
+ggplot(meth_df, aes(x=CH4_mean)) +
+  geom_histogram() 
+
+qqnorm(meth_df$CH4_mean); qqline(meth_df$CH4_mean)
+
+breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  na.omit(Frequency) %>%
+  na.omit(CH4_mean) %>%
+  ggplot(aes(x = Frequency, 
+             y = CH4_mean)) + 
+  geom_violin() # + geom_jitter()
+
+```
+
+```{r}
+# acetate
+ace_df <- breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  select(-starts_with("CH4"), -starts_with("CO2"), -ends_with("median"), -starts_with("N"), -starts_with("Comments"))
+ace_df
+
+ggplot(ace_df, aes(x=H2_mean)) +
+  geom_histogram() 
+
+qqnorm(ace_df$H2_mean); qqline(ace_df$H2_mean)
+
+breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  na.omit(Frequency) %>%
+  na.omit(H2_mean) %>%
+  ggplot(aes(x = Frequency, 
+             y = H2_mean)) + 
+  geom_violin() # + geom_jitter()
+```
+
+```{r}
+# propionate
+pro_df <- breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  select(-starts_with("H2"), -starts_with("CH4"), -ends_with("median"), -starts_with("N"), -starts_with("Comments"))
+pro_df
+
+ggplot(pro_df, aes(x=CO2_mean)) +
+  geom_histogram() 
+
+qqnorm(pro_df$CO2_mean); qqline(pro_df$CO2_mean)
+
+breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  na.omit(Frequency) %>%
+  na.omit(CO2_mean) %>%
+  ggplot(aes(x = Frequency, 
+             y = CO2_mean)) + 
+  geom_violin() # + geom_jitter()
+```
+
+```{r}
+# pH
+pH_df <- breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  select(-starts_with("H2"), -starts_with("CH4"), -ends_with("median"), -starts_with("CO2"), -starts_with("Comments"))
+pH_df
+
+ggplot(pH_df, aes(x=N_measurement)) +
+  geom_histogram() 
+
+qqnorm(pH_df$N_measurement); qqline(pH_df$N_measurement)
+
+breath_wkly %>%
+  filter(Study_week == "week3") %>%
+  na.omit(Frequency) %>%
+  na.omit(N_measurement) %>%
+  ggplot(aes(x = Frequency, 
+             y = N_measurement)) + 
+  geom_violin() # + geom_jitter()
+```
+
+# Homework 5.3
+Check assumptions on data sets for individuals who consumed BRMPS: breath methane, pH, acetate, propionate
+```{r}
+# breath methane
+#Check Sample Size
+met_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") %>%
+  select(-ends_with("median"), -starts_with("H2"), -starts_with("CO2")) %>%
+  group_by(Supplement_consumed) %>%
+  summarise(sample_size = n())
+met_df
+
+#Check Normality
+met_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") 
+shapiro.test(met_df$CH4_mean) 
+ggplot(met_df, aes(x = CH4_mean)) + geom_histogram()
+qqnorm(met_df$CH4_mean); qqline(met_df$CH4_mean)
+```
+
+```{r}
+# acetate
+#Check Sample Size
+ace_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") %>%
+  group_by(Supplement_consumed) %>%
+  summarise(sample_size = n())
+ace_df
+
+#Check Normality
+ace_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") 
+shapiro.test(ace_df$H2_mean) 
+ggplot(ace_df, aes(x = H2_mean)) + geom_histogram()
+qqnorm(ace_df$H2_mean); qqline(ace_df$H2_mean)
+```
+
+```{r}
+# propionate
+#Check Sample Size
+pro_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") %>%
+  group_by(Supplement_consumed) %>%
+  summarise(sample_size = n())
+pro_df
+
+#Check Normality
+pro_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") 
+shapiro.test(pro_df$CO2_mean) 
+ggplot(pro_df, aes(x = CO2_mean)) + geom_histogram()
+qqnorm(pro_df$CO2_mean); qqline(pro_df$CO2_mean)
+```
+
+```{r}
+# pH
+#Check Sample Size
+pH_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") %>%
+  group_by(Supplement_consumed) %>%
+  summarise(sample_size = n())
+pH_df
+
+#Check Normality
+pH_df <- breath_wkly %>%
+  filter(Supplement_consumed == "BRMPS") 
+shapiro.test(pH_df$N_measurement) 
+ggplot(pH_df, aes(x = N_measurement)) + geom_histogram()
+qqnorm(pH_df$N_measurement); qqline(pH_df$N_measurement)
+```
+
+# Homework 5.4
+Conduct the appropriate statistical tests to determine if patterns observed in plots are significant. Write your interpretations of the results as a comment after the statistical tests.
+```{r}
+# breath methane
+wk1_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week1", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk1_BRMPS$CH4_mean) 
+ggplot(wk1_BRMPS, aes(x = CH4_mean)) + geom_histogram()
+
+wk3_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week3", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk3_BRMPS$CH4_mean) 
+ggplot(wk3_BRMPS, aes(x = CH4_mean)) + geom_histogram()
+
+
+# join these data frames back together
+brmps_df <- inner_join(x = wk1_BRMPS, y = wk3_BRMPS,
+                    by = c("Participant_ID", "Frequency", 
+                           "Semester", "Supplement_consumed", "Quantity_compliant")) %>%
+  rename(CH4_mean_wk1 = CH4_mean.x,
+         CH4_mean_wk3 = CH4_mean.y) %>%
+  select(-starts_with("Study_week"))
+
+# code to run paired t-test 
+t.test(x = brmps_df$CH4_mean_wk1, y = brmps_df$CH4_mean_wk3, 
+       alternative = "less", paired = TRUE) 
+
+#Low p-value of 0.001275 suggests that alternative hypothesis is accepted, null hypothesis is rejected. 
+```
+
+```{r}
+# acetate
+wk1_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week1", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk1_BRMPS$H2_mean) 
+ggplot(wk1_BRMPS, aes(x = H2_mean)) + geom_histogram()
+
+wk3_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week3", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk3_BRMPS$H2_mean) 
+ggplot(wk3_BRMPS, aes(x = H2_mean)) + geom_histogram()
+
+
+# join these data frames back together
+brmps_df <- inner_join(x = wk1_BRMPS, y = wk3_BRMPS,
+                    by = c("Participant_ID", "Frequency", 
+                           "Semester", "Supplement_consumed", "Quantity_compliant")) %>%
+  rename(H2_mean_wk1 = H2_mean.x,
+         H2_mean_wk3 = H2_mean.y) %>%
+  select(-starts_with("Study_week"))
+
+# code to run paired t-test 
+t.test(x = brmps_df$H2_mean_wk1, y = brmps_df$H2_mean_wk3, 
+       alternative = "less", paired = TRUE)
+
+#Low p-value of 0.0002197 suggests that alternative hypothesis is accepted, null hypothesis is rejected. 
+```
+
+```{r}
+# propionate
+wk1_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week1", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk1_BRMPS$CO2_mean) 
+ggplot(wk1_BRMPS, aes(x = CO2_mean)) + geom_histogram()
+
+wk3_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week3", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk3_BRMPS$CO2_mean) 
+ggplot(wk3_BRMPS, aes(x = CO2_mean)) + geom_histogram()
+
+
+# join these data frames back together
+brmps_df <- inner_join(x = wk1_BRMPS, y = wk3_BRMPS,
+                    by = c("Participant_ID", "Frequency", 
+                           "Semester", "Supplement_consumed", "Quantity_compliant")) %>%
+  rename(CO2_mean_wk1 = CO2_mean.x,
+         CO2_mean_wk3 = CO2_mean.y) %>%
+  select(-starts_with("Study_week"))
+
+# code to run paired t-test 
+t.test(x = brmps_df$CO2_mean_wk1, y = brmps_df$CO2_mean_wk3, 
+       alternative = "less", paired = TRUE)
+
+#High p-value of 0.54 suggests that alternative hypothesis is rejected, null hypothesis is accepted. 
+```
+
+```{r}
+# pH
+wk1_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week1", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk1_BRMPS$N_measurement) 
+ggplot(wk1_BRMPS, aes(x = N_measurement)) + geom_histogram()
+
+wk3_BRMPS <- breath_wkly %>%
+  filter(Study_week == "week3", 
+         Supplement_consumed == "BRMPS") 
+shapiro.test(wk3_BRMPS$N_measurement) 
+ggplot(wk3_BRMPS, aes(x = N_measurement)) + geom_histogram()
+
+
+# join these data frames back together
+brmps_df <- inner_join(x = wk1_BRMPS, y = wk3_BRMPS,
+                    by = c("Participant_ID", "Frequency", 
+                           "Semester", "Supplement_consumed", "Quantity_compliant")) %>%
+  rename(N_measurement_wk1 = N_measurement.x,
+         N_measurement_wk3 = N_measurement.y) %>%
+  select(-starts_with("Study_week"))
+
+# code to run paired t-test 
+t.test(x = brmps_df$N_measurement_wk1, y = brmps_df$N_measurement_wk3, 
+       alternative = "less", paired = TRUE)
+
+#High p-value of 0.8512 suggests that alternative hypothesis is rejected, null hypothesis is accepted. 
+```
+
+
+# ANOVA
+As you know, we have more than two starch groups we would like to analyze. Instead of doing multiple pairwise comparisons with t-tests (which isn't the best approach because of reasons ...) we use an ANOVA, which compares all categorical groups to one another. 
+
+To illustrate when an ANOVA would be useful, use the `scfa_wide` data frame imported above, plot the delta butyrate vs. supplement type. 
+```{r}
+scfa_wide %>%
+  ggplot(aes(x = supplement_consumed,
+             y = delta_butyrate,
+             color = supplement_consumed)) +
+  geom_hline(yintercept = 0,
+             linetype = "dashed") + 
+  geom_violin() + 
+  geom_jitter() + 
+  xlab(NULL) +
+  ylab("Butyrate mmol/kg (wk3 - wk1)") + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+### Check assumptions
+
+As with the t-tests, there are assumptions to check before running an ANOVA. 
+```{r}
+# check sample sizes
+scfa_wide %>%
+  group_by(supplement_consumed) %>%
+  summarise(sample_size = n())
+```
+
+Divide the labor with your neighbors and run the normality check on each of the 12 supplements. The first few have been completed as an example.
+```{r}
+# check normality of each group 
+s1 <- scfa_wide %>%
+  filter(supplement_consumed == "Accessible") 
+shapiro.test(s1$delta_butyrate) #p-value = 0.6886
+
+s2 <- scfa_wide %>%
+  filter(supplement_consumed == "Arabino") 
+shapiro.test(s2$delta_butyrate) #p-value = 0.7785
+
+s3 <- scfa_wide %>%
+  filter(supplement_consumed == "BRMPS+Accessible")
+shapiro.test(s3$delta_butyrate) #p-value = 0.4633
+
+s4 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize") 
+shapiro.test(s4$delta_butyrate) #p-value = 0.7113
+
+s5 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize+BRMPS") 
+shapiro.test(s5$delta_butyrate) #p-value = 0.6287
+
+s6 <- scfa_wide %>%
+  filter(supplement_consumed == "Inulin") 
+shapiro.test(s6$delta_butyrate) #p-value = 0.492
+```
+
+```{r}
+# check variances 
+bartlett.test(delta_butyrate ~ supplement_consumed, data = scfa_wide)
+# enter arguments with the following formula: continuous ~ categorical 
+```
+
+Now that we know our assumptions are reasonably met, we can run the test: 
+```{r}
+# run anova
+aov_results <- aov(delta_butyrate ~ supplement_consumed, data = scfa_wide)
+summary(aov_results)
+```
+
+
+# Homework 5.5
+Repeat the processing of checking assumptions to conduct ANOVA on delta acetate and propionate. Create a plot for delta acetate and propionate. Save plots to folder called `figures`. Decide if you should proceed with conducting the ANOVA. Write your interpretations of the results as a comment after the statistical tests.
+```{r}
+# acetate
+
+#Sample Size Check
+scfa_wide %>%
+  group_by(supplement_consumed) %>%
+  summarise(sample_size = n())
+
+# check normality of each group 
+s1 <- scfa_wide %>%
+  filter(supplement_consumed == "Accessible") 
+shapiro.test(s1$delta_acetate) 
+
+s2 <- scfa_wide %>%
+  filter(supplement_consumed == "Arabino") 
+shapiro.test(s2$delta_acetate)
+
+s3 <- scfa_wide %>%
+  filter(supplement_consumed == "BRMPS+Accessible")
+shapiro.test(s3$delta_acetate) 
+
+s4 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize") 
+shapiro.test(s4$delta_acetate) 
+
+s5 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize+BRMPS") 
+shapiro.test(s5$delta_acetate) 
+
+s6 <- scfa_wide %>%
+  filter(supplement_consumed == "Inulin") 
+shapiro.test(s6$delta_acetate) 
+
+#Variance Check
+bartlett.test(delta_acetate ~ supplement_consumed, data = scfa_wide)
+
+# run anova
+aov_results <- aov(delta_acetate ~ supplement_consumed, data = scfa_wide)
+summary(aov_results)
+
+#Create plot
+scfa_wide %>%
+  ggplot(aes(x = supplement_consumed,
+             y = delta_acetate,
+             color = supplement_consumed)) +
+  geom_hline(yintercept = 0,
+             linetype = "dashed") + 
+  geom_violin() + 
+  geom_jitter() + 
+  xlab(NULL) +
+  ylab("Acetate mmol/kg (wk3 - wk1)") + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#The F-value is around 1.46. This suggests that the null hypothesis of the data not having significant differences in acetate concentration among one another is supported given that the F-value is rather close to 1.0. 
+```
+
+```{r}
+# propionate
+#Sample Size Check
+scfa_wide %>%
+  group_by(supplement_consumed) %>%
+  summarise(sample_size = n())
+
+# check normality of each group 
+s1 <- scfa_wide %>%
+  filter(supplement_consumed == "Accessible") 
+shapiro.test(s1$delta_propionate) 
+
+'s2 <- scfa_wide %>%
+  filter(supplement_consumed == "Arabino") 
+shapiro.test(s2$delta_propionate) ' #No samples available for this one. All NA
+
+s3 <- scfa_wide %>%
+  filter(supplement_consumed == "BRMPS+Accessible")
+shapiro.test(s3$delta_propionate) 
+
+s4 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize") 
+shapiro.test(s4$delta_propionate) 
+
+s5 <- scfa_wide %>%
+  filter(supplement_consumed == "HiMaize+BRMPS") 
+shapiro.test(s5$delta_propionate) 
+
+s6 <- scfa_wide %>%
+  filter(supplement_consumed == "Inulin") 
+shapiro.test(s6$delta_propionate)
+
+#Variance Check
+bartlett.test(delta_propionate ~ supplement_consumed, data = scfa_wide)
+
+# run anova
+aov_results <- aov(delta_propionate ~ supplement_consumed, data = scfa_wide)
+summary(aov_results)
+
+#Create plot
+scfa_wide %>%
+  ggplot(aes(x = supplement_consumed,
+             y = delta_propionate,
+             color = supplement_consumed)) +
+  geom_hline(yintercept = 0,
+             linetype = "dashed") + 
+  geom_violin() + 
+  geom_jitter() + 
+  xlab(NULL) +
+  ylab("Propionate mmol/kg (wk3 - wk1)") + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+#The F-value is very low, meaning that the null hypothesis can also be accepted, meaning that there is high clustering around the means and little variability among the data. 
+
+```
+
